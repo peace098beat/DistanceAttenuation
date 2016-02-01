@@ -17,7 +17,6 @@ import math
 from scipy import special
 
 erfc = special.erfc
-print erfc(1)
 
 
 
@@ -36,19 +35,74 @@ def time_func(func):
     return decorator
 
 
-def sound_speed(temp=20., stric=True):
-    """
-    :param temp: 摂氏{-273.15 < tmp < ∞}
-    :return: 音速[ms]
-    """
-    if stric:
-        # 厳密
-        c = 20.055 * (float(temp) + 273.15) ** (1. / 2.)
-    else:
-        # テイラー展開一時近時
-        c = 331.5 + 0.6 * float(temp)
+## Air dencity
+#  under a condition of specific temperature.
+#  Ref.:田中俊六 他, 最新 建築環境工学 [改訂2版],
+#       井上書院, ISBN 4-7530-1734-6, p. 149.
+#  @param temperature (in Celsius degree), default=15.0
+#  @param static air pressure (N/m2), default=101325.0
+#  @retval density of the air (kg/m3)
+def airDensity(temp=15., p=101325.):
+    """Air density"""
+
+    rho = 353.25 / (273.15 + temp) * (p / 101325.)
+    return rho
+
+
+## Sound speed in air
+#  Sound speed in air under a condition of specific temperature.
+#  Ref.: P. M. Morse, Vibration and sound (2nd Edition),
+#        Acoust. Soc. Am., ISBN 0-88318-876-7, p. 222.
+#  @param temperature (in Celsius degree), default=15.0
+#  @param static air pressure (N/m2), default=101325.0
+#  @retval sound speed (m/s)
+def soundSpeed(temp=15., p=101325.):
+    """Sound speed in air"""
+    import math as ma
+
+    c = ma.sqrt(1.40 * p / airDensity(temp, p))
+
     return c
 
+
+def distance_TF_non_refrect(h1=0.1, h2=1.8, L=2., f_min=1, f_max=24000, df=10, temp=20.):
+    """
+    直接音の計算．反射波は考慮しない
+    :param h1: 音源S高さ[m]
+    :param h2: 受音点R高さ[m]
+    :param L: 音源Sと受音点Rとの水平距離[m]
+    :param f_min: 解析する最低周波数[Hz]
+    :param f_max: 解析する最高周波数[Hz]
+    :param df: 解析の周波数幅[Hz]
+    :param temp: 温度[℃]
+    :return: Pr{Conmplex}, Freq{周波数列}
+    """
+    # 音速
+    c = soundSpeed(temp)
+
+    # 音源の振幅
+    A = 1.
+    # 音源のベクトル
+    S = np.array([0, h1])
+    # 受音点位置へのベクトル
+    R = np.array([L, h2])
+    # 音源から受音点へのベクトル
+    vec_r1 = R - S
+    # 音源から受音点までの距離
+    r1 = np.linalg.norm(vec_r1)
+    # 解析する周波数幅
+    f_num = f_max / df
+    freq = np.linspace(f_min, f_max, f_num)
+
+    # 結果格納用バッファ
+    Pr_s = list()
+    for f in freq:
+        # 波数
+        k = 2. * np.pi * f / c
+        Pr1 = A * np.exp(1j * k * r1) / r1
+        Pr_s.append(Pr1)
+
+    return np.asarray(Pr_s), freq
 
 @time_func
 def distance_TF(h1=0.1, h2=1.8, L=2., f_min=1, f_max=24000, df=10, temp=20.):
@@ -64,7 +118,7 @@ def distance_TF(h1=0.1, h2=1.8, L=2., f_min=1, f_max=24000, df=10, temp=20.):
     :return: Pr{Conmplex}, Freq{周波数列}
     """
     # 音速
-    c = sound_speed(temp, True)
+    c = soundSpeed(temp)
     # print 'Sound Speed',c
 
     # 音源の振幅
@@ -101,7 +155,7 @@ def distance_TF(h1=0.1, h2=1.8, L=2., f_min=1, f_max=24000, df=10, temp=20.):
 
     return np.asarray(Pr_s), freq
 
-
+@time_func
 def distance_TF_ref_dumping(h1=0.1, h2=1.8, L=2., f_min=1, f_max=24000, df=10, temp=20., omega=30.):
     """
     点音源と壁面における鏡像音源との干渉による伝達関数を測定
@@ -117,7 +171,7 @@ def distance_TF_ref_dumping(h1=0.1, h2=1.8, L=2., f_min=1, f_max=24000, df=10, t
     :return: Pr{Conmplex}, Freq{周波数列}
     """
     # 音速
-    c = sound_speed(temp, True)
+    c = soundSpeed(temp)
     # 音源の振幅
     A = 1.
     # 音源のベクトル
@@ -208,6 +262,8 @@ def distance_TF_ref_dumping(h1=0.1, h2=1.8, L=2., f_min=1, f_max=24000, df=10, t
 
 # @time_func
 def main(h1, h2, L):
+    import matplotlib.pyplot as plt
+
     # 音源の高さ[m]
     # h1 = 0.1
     # 受音点の高さ[m]
@@ -224,9 +280,13 @@ def main(h1, h2, L):
     print 'b', b, np.sum(b)
 
     # グラフ
+    # -------------------------
     fig = plt.figure(1)
     plt.plot(freq, np.abs(Pr_s))
     plt.plot(freq, np.abs(Pr_s_str))
+    s = 'Hs=%d[ms]' % 2
+    plt.annotate(s, xy=(0.2, 0.9), fontsize=15, xycoords='axes fraction',
+                 horizontalalignment='right', verticalalignment='bottom')
     plt.show()
     return
 
